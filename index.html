@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open in MetaScalp</title>
+<style>
+  body { background:#0b1220; color:#d7e0ee; font:16px/1.5 system-ui,Segoe UI,Arial,sans-serif;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+  .box { max-width:520px; padding:28px; text-align:center; }
+  h1 { font-size:26px; margin:0 0 6px; letter-spacing:.5px; }
+  #st { margin:14px 0; font-size:17px; }
+  .ok { color:#5fe08a; } .err { color:#ff6b6b; } .dim { color:#7f8da3; font-size:13px; }
+  pre { text-align:left; background:#111a2c; padding:10px; border-radius:6px;
+        font-size:12px; white-space:pre-wrap; word-break:break-all; color:#9fb0c8; }
+  button { background:#1d6fd6; color:#fff; border:0; border-radius:6px; padding:9px 16px;
+           font-size:15px; cursor:pointer; margin:4px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1 id="tk">—</h1>
+  <div id="st">Looking for MetaScalp…</div>
+  <div id="btns"></div>
+  <pre id="log"></pre>
+  <div class="dim">MetaScalp must be running on this computer.<br>ms_open v1.0</div>
+</div>
+<script>
+// ms_open v1.0 — atver tokenu MetaScalp terminālī caur tā lokālo API.
+// Lietošana:  ms_open_v1_0.html?t=LTCUSDT
+//   &mode=combo   (noklusējums) POST /api/combo        — combo ar visām biržām
+//   &mode=ticker                POST /api/change-ticker — tikai aktīvais logs
+const q      = new URLSearchParams(location.search);
+const ticker = (q.get('t') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const mode   = q.get('mode') || 'combo';
+const $ = id => document.getElementById(id);
+const log = s => { $('log').textContent += s + '\n'; };
+$('tk').textContent = ticker || 'No ticker';
+
+function ping(port) {
+  const ctl = new AbortController();
+  const tm  = setTimeout(() => ctl.abort(), 1500);
+  return fetch(`http://127.0.0.1:${port}/ping`, { signal: ctl.signal })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(d => d.app === 'MetaScalp' ? { port, version: d.version } : Promise.reject())
+    .finally(() => clearTimeout(tm));
+}
+
+async function discover() {
+  const ports = [];
+  for (let p = 17845; p <= 17855; p++) ports.push(p);
+  try { return await Promise.any(ports.map(ping)); } catch { return null; }
+}
+
+async function post(port, path, body) {
+  const r = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) });
+  const text = await r.text();
+  log(`POST ${path} ${JSON.stringify(body)}\n  → ${r.status} ${text}`);
+  return r.ok;
+}
+
+async function run(m) {
+  $('log').textContent = '';
+  if (!ticker) { $('st').innerHTML = '<span class="err">No ticker in the link.</span>'; return; }
+  const ms = await discover();
+  if (!ms) {
+    $('st').innerHTML = '<span class="err">MetaScalp not found.</span><br>' +
+      '<span class="dim">Start MetaScalp on this computer. If the browser asks for ' +
+      'permission to access local network / apps on this device — allow it.</span>';
+    return;
+  }
+  log(`MetaScalp ${ms.version} on port ${ms.port}`);
+  let ok = false;
+  try {
+    ok = (m === 'ticker')
+      ? await post(ms.port, '/api/change-ticker', { tickerPattern: `BINANCE:${ticker}.p` })
+      : await post(ms.port, '/api/combo', { ticker });
+  } catch (e) { log('Error: ' + e); }
+  $('st').innerHTML = ok
+    ? '<span class="ok">✓ Opened in MetaScalp</span>'
+    : '<span class="err">MetaScalp refused the request — see details below.</span>';
+  if (ok && q.get('close') !== '0') setTimeout(() => window.close(), 1200);
+}
+
+$('btns').innerHTML =
+  '<button onclick="run(\'combo\')">Combo</button>' +
+  '<button onclick="run(\'ticker\')">Active window</button>';
+run(mode);
+</script>
+</body>
+</html>
