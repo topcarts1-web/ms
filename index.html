@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MS COMBO</title>
+<style>
+  html, body { margin:0; height:100%; background:#0b1220; }
+  body { display:flex; align-items:center; justify-content:center;
+         font:600 22px/1.4 system-ui,Segoe UI,Arial,sans-serif;
+         color:#3b4a63; letter-spacing:3px; text-align:center; }
+  #st.ok  { color:#5fe08a; }
+  #st.err { color:#ff6b6b; font-size:15px; letter-spacing:0; font-weight:400; }
+</style>
+</head>
+<body>
+<div id="st">MS COMBO</div>
+<script>
+// ms_open v1.2 — atver tokenu MetaScalp Combo logā caur lokālo API.
+// Lietošana:  index.html?t=LTCUSDT
+const ticker = (new URLSearchParams(location.search).get('t') || '')
+                 .toUpperCase().replace(/[^A-Z0-9]/g, '');
+const st = document.getElementById('st');
+
+function ping(port) {
+  const ctl = new AbortController();
+  const tm  = setTimeout(() => ctl.abort(), 1500);
+  return fetch(`http://127.0.0.1:${port}/ping`, { signal: ctl.signal })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(d => d.app === 'MetaScalp' ? port : Promise.reject())
+    .finally(() => clearTimeout(tm));
+}
+
+(async () => {
+  if (!ticker) return;
+  const ports = [];
+  for (let p = 17845; p <= 17855; p++) ports.push(p);
+  let port;
+  try { port = await Promise.any(ports.map(ping)); }
+  catch {
+    st.className = 'err';
+    st.textContent = 'MetaScalp not found — start MetaScalp on this computer.';
+    return;
+  }
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/combo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker }) });
+    if (!r.ok) throw new Error(await r.text());
+    st.className = 'ok';
+    setTimeout(() => window.close(), 800);
+  } catch (e) {
+    st.className = 'err';
+    st.textContent = `MetaScalp could not open ${ticker}: ${e.message || e}`;
+  }
+})();
+</script>
+</body>
+</html>
